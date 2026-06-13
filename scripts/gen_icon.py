@@ -124,7 +124,8 @@ def write_png(path, px):
 	print('wrote', path)
 
 
-here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets')
+os.makedirs(here, exist_ok=True)
 icons = {
 	'icon_on': make_pixels((90, 210, 120)),    # 緑=有効
 	'icon_off': make_pixels((120, 128, 140)),  # 灰=無効

@@ -5,8 +5,8 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-BIN="$HERE/dist/claude-tts-tray-linux-amd64"
-[ -f "$BIN" ] || BIN="$HERE/claude-tts-tray"
+BIN="$HERE/../dist/claude-tts-tray-linux-amd64"
+[ -f "$BIN" ] || BIN="$HERE/../claude-tts-tray"
 if [ ! -f "$BIN" ]; then
 	echo "バイナリが見つかりません。先に ./build-linux.sh を実行するか、バイナリを置いてください。" >&2
 	exit 1
