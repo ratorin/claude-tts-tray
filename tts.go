@@ -22,6 +22,10 @@ import (
 // activePlays は現在進行中の発話(playLoop)の数。0より大きければ発話中。
 var activePlays atomic.Int32
 
+// notifyPlaying は確認音/効果音を再生中かどうか。
+// 読み上げ(speak)はこの間 開始を待ち、短い確認音を潰さないようにする(確認音を優先)。
+var notifyPlaying atomic.Bool
+
 // isSpeaking は現在発話中かどうかを返す(トレイアイコン切替に使用)。
 func isSpeaking() bool { return activePlays.Load() > 0 }
 
@@ -148,6 +152,10 @@ func speak(text string, speaker int) {
 	if text == "" {
 		return
 	}
+	// 確認音が鳴っている短い間は開始を待つ(確認音を読み上げで潰さない)。最大約2秒。
+	for i := 0; i < 25 && notifyPlaying.Load(); i++ {
+		time.Sleep(80 * time.Millisecond)
+	}
 	playMu.Lock()
 	if playCancel != nil {
 		playCancel() // 前の発話をキャンセル
@@ -271,8 +279,10 @@ func playFile(path string) {
 
 	go func() {
 		activePlays.Add(1)
+		notifyPlaying.Store(true) // 確認音再生中(読み上げに待ってもらう)
 		refreshIcon()
 		defer func() {
+			notifyPlaying.Store(false)
 			if activePlays.Add(-1) == 0 {
 				refreshIcon()
 			}
@@ -300,8 +310,10 @@ func playSoundBytes(wav []byte) {
 
 	go func() {
 		activePlays.Add(1)
+		notifyPlaying.Store(true) // 確認音/効果音 再生中(読み上げに待ってもらう)
 		refreshIcon()
 		defer func() {
+			notifyPlaying.Store(false)
 			if activePlays.Add(-1) == 0 {
 				refreshIcon()
 			}
