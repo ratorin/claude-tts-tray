@@ -169,24 +169,26 @@ CGO_ENABLED=0 go build -ldflags="-H=windowsgui -s -w" -o claude-tts-tray.exe .
 - `~/.claude/tts-config.json` の `server` を、そのマシンから到達可能な合成サーバーに設定する
   （ローカルにエンジンが無い場合はネットワーク上のVOICEVOX/AivisSpeechを指す）。
 
-## 合成エンジン（現用: ローカルVOICEVOX）
+## 遅延の目安（合成エンジン・スペック別）
 
-合成先は **このPCのローカル VOICEVOX ENGINE 0.25.2**（`http://127.0.0.1:50021`）。
-- 読み上げ(Stop) = **もち子さん ノーマル**（speaker=20）
-- 確認(Notification) = **青山龍星 ノーマル**（notify_speaker=13、キャッシュで即時）
-- 実測レイテンシ: ウォーム時 短文で **約0.6〜0.75秒**（初回のみモデルロードで~1.7秒）。
+読み上げ開始までの待ち時間は、ほぼ合成エンジンの処理時間で決まる（ネットワークは数十ms）。
+短文（十数文字）の参考値:
 
-### 遅延の背景
-リモートの **AivisSpeech** で合成していた頃は、短文でも synthesis に約2.6秒（テキスト長に依存しない固定コスト、ネットワークは数十ms）かかっていた。
-ローカルVOICEVOX（軽量なHiFi-GAN系）に移行し、往復ゼロ＋高速化で大幅改善。高音質を優先する場合はトレイ「サーバー」からAivisSpeechを選べる（可逆）。
+| エンジン | 実行環境 | 短文の目安 |
+|---------|---------|-----------|
+| VOICEVOX | CPU（最新デスクトップ, 例: Intel 第13世代 20スレッド） | 約0.6〜0.8秒（ウォーム）／初回 ~1.7秒（モデルロード） |
+| VOICEVOX | CPU（低スペック / VPS） | 数秒 |
+| VOICEVOX | GPU（NVIDIA） | サブ秒（CPU比 約25〜30倍速） |
+| AivisSpeech | CPU | 約3〜5秒（BERT前処理が重く固定コスト大。長文は数十秒） |
+| AivisSpeech | GPU（DirectML / CUDA） | 約1.5〜2秒 |
 
-> Intel第12世代以降のP/E混在CPUでは合成スレッドが遅いEコアに載ると悪化するため、エンジンは
-> `--cpu_num_threads 15`（論理コアの約3/4）で起動している。
+- **軽量・低遅延を優先 → VOICEVOX**、**高音質を優先 → AivisSpeech**（どちらもVOICEVOX互換API、トレイ「サーバー」で切替可）。
+- GPUの無いCPUのみ環境では VOICEVOX が現実的に最速。**確認音はキャッシュ**されるため初回以降は即時（後述）。
+- Intel 第12世代以降のP/Eコア混在CPUでは、合成スレッドが遅いEコアに載ると悪化する。
+  VOICEVOXは起動オプション `--cpu_num_threads`（論理コアの約3/4）や、電源プランを「最適なパフォーマンス」にして回避できる。
 
-### ローカルVOICEVOXエンジン
-- 本体: `C:\xampp\Project\voicevox-engine\windows-cpu\run.exe`
-- 起動: `run.exe --host 127.0.0.1 --port 50021 --cpu_num_threads 15`
-- 隠し常駐: `C:\xampp\Project\voicevox-engine\start-voicevox-hidden.vbs`（wscriptでコンソール窓なし起動）
+> 参考値は環境差が大きい目安。VOICEVOX/AivisSpeech は公式サイトからダウンロードして起動し、
+> トレイの「サーバーを追加・編集…」でそのURL（例 `http://127.0.0.1:50021`）を登録する。
 
 ### 確認音キャッシュ
 確認の文言は固定なので、**一度だけ合成して `~/.claude/tts-cache/` にWAVキャッシュ**し、以降はファイルを即再生する。
