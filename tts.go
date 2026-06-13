@@ -16,9 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
-	"unsafe"
 )
 
 // activePlays は現在進行中の発話(playLoop)の数。0より大きければ発話中。
@@ -27,43 +25,8 @@ var activePlays atomic.Int32
 // isSpeaking は現在発話中かどうかを返す(トレイアイコン切替に使用)。
 func isSpeaking() bool { return activePlays.Load() > 0 }
 
-// --- winmm.dll による WAV 再生 -------------------------------------------
-var (
-	winmm         = syscall.NewLazyDLL("winmm.dll")
-	procPlaySound = winmm.NewProc("PlaySoundW")
-)
-
-const (
-	sndSync      = 0x0000
-	sndAsync     = 0x0001
-	sndNodefault = 0x0002
-	sndAlias     = 0x00010000
-	sndFilename  = 0x00020000
-)
-
-// playSoundFile はWAVファイルを同期再生する(再生終了までブロック)。
-// SND_NODEFAULT: ファイルが無い場合にシステム既定音を鳴らさない。
-func playSoundFile(path string) {
-	p, err := syscall.UTF16PtrFromString(path)
-	if err != nil {
-		return
-	}
-	procPlaySound.Call(uintptr(unsafe.Pointer(p)), 0, uintptr(sndFilename|sndSync|sndNodefault))
-}
-
-// playSystemAlias はWindowsのシステム音(例 SystemAsterisk)を再生する。
-func playSystemAlias(alias string) {
-	p, err := syscall.UTF16PtrFromString(alias)
-	if err != nil {
-		return
-	}
-	procPlaySound.Call(uintptr(unsafe.Pointer(p)), 0, uintptr(sndAlias|sndSync|sndNodefault))
-}
-
-// stopSound は再生中の音を即座に停止する(PlaySound(NULL))。
-func stopSound() {
-	procPlaySound.Call(0, 0, 0)
-}
+// 音声再生(playSoundFile / playSystemAlias / stopSound)と openBrowser は
+// OS依存のため sys_windows.go / sys_linux.go に分離。
 
 // --- 合成 (AivisSpeech / VOICEVOX 互換API) -------------------------------
 var httpClient = &http.Client{Timeout: 30 * time.Second}

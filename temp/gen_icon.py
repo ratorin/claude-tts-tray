@@ -4,6 +4,7 @@
 """
 import struct
 import os
+import zlib
 
 W = H = 32
 
@@ -103,7 +104,32 @@ def make_stop_pixels():
 	return px
 
 
+def write_png(path, px):
+	"""RGBA 32x32 の最小PNGを出力(Linuxトレイ用)。"""
+	def chunk(typ, data):
+		body = typ + data
+		return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xffffffff)
+
+	raw = bytearray()
+	for y in range(H):
+		raw.append(0)  # フィルタ種別 0
+		for x in range(W):
+			r, g, b, a = px[y][x]
+			raw += bytes((r, g, b, a))
+	sig = b'\x89PNG\r\n\x1a\n'
+	ihdr = struct.pack('>IIBBBBB', W, H, 8, 6, 0, 0, 0)  # 8bit RGBA
+	idat = zlib.compress(bytes(raw), 9)
+	with open(path, 'wb') as f:
+		f.write(sig + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b''))
+	print('wrote', path)
+
+
 here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-write_ico(os.path.join(here, 'icon_on.ico'), make_pixels((90, 210, 120)))   # 緑=有効
-write_ico(os.path.join(here, 'icon_off.ico'), make_pixels((120, 128, 140)))  # 灰=無効
-write_ico(os.path.join(here, 'icon_speaking.ico'), make_stop_pixels())       # オレンジ=発話中(クリックで停止)
+icons = {
+	'icon_on': make_pixels((90, 210, 120)),    # 緑=有効
+	'icon_off': make_pixels((120, 128, 140)),  # 灰=無効
+	'icon_speaking': make_stop_pixels(),        # オレンジ=発話中(クリックで停止)
+}
+for name, px in icons.items():
+	write_ico(os.path.join(here, name + '.ico'), px)  # Windows
+	write_png(os.path.join(here, name + '.png'), px)  # Linux

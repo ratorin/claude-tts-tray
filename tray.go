@@ -1,7 +1,6 @@
 package main
 
 import (
-	_ "embed"
 	"os"
 	"os/exec"
 	"sort"
@@ -10,14 +9,8 @@ import (
 	"fyne.io/systray"
 )
 
-//go:embed icon_on.ico
-var iconOn []byte
-
-//go:embed icon_off.ico
-var iconOff []byte
-
-//go:embed icon_speaking.ico
-var iconSpeaking []byte
+// アイコン(iconOn/iconOff/iconSpeaking)は OS別に icons_windows.go(.ico) /
+// icons_linux.go(.png) で埋め込む。
 
 // trayReady は systray の準備完了フラグ(onReady完了後にtrue)。
 var trayReady atomic.Bool
@@ -227,12 +220,6 @@ func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, 
 	}
 }
 
-// openBrowser は既定のブラウザでURLを開く。
-func openBrowser(url string) {
-	if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start(); err != nil {
-		logLine("openBrowser failed: " + err.Error())
-	}
-}
 
 // buildNotifyMenu は確認音の種類(ラジオ)を構築する。
 func buildNotifyMenu(parent *systray.MenuItem) {
