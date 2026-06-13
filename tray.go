@@ -115,6 +115,21 @@ func onReady() {
 		}
 	}()
 
+	// ログイン時に自動起動(Win=スタートアップの.lnk / Linux=XDG autostart)
+	mAuto := systray.AddMenuItemCheckbox("ログイン時に自動起動", "スタートアップ登録/解除", autostartEnabled())
+	go func() {
+		for range mAuto.ClickedCh {
+			if err := setAutostart(!autostartEnabled()); err != nil {
+				logLine("autostart toggle failed: " + err.Error())
+			}
+			if autostartEnabled() {
+				mAuto.Check()
+			} else {
+				mAuto.Uncheck()
+			}
+		}
+	}()
+
 	mQuit := systray.AddMenuItem("終了", "常駐を終了")
 	go func() {
 		<-mQuit.ClickedCh

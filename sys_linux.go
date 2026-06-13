@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 )
 
@@ -73,4 +74,46 @@ func openBrowser(url string) {
 	if err := exec.Command("xdg-open", url).Start(); err != nil {
 		logLine("openBrowser failed: " + err.Error())
 	}
+}
+
+// --- スタートアップ(ログイン時自動起動): XDG autostart 方式 ---------------
+// ~/.config/autostart/claude-tts-tray.desktop を置く/消すだけ。
+
+func autostartDesktopPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".config", "autostart", "claude-tts-tray.desktop")
+}
+
+// autostartEnabled は autostart の .desktop があるか。
+func autostartEnabled() bool {
+	_, err := os.Stat(autostartDesktopPath())
+	return err == nil
+}
+
+// setAutostart は autostart の .desktop を作成/削除する。
+func setAutostart(on bool) error {
+	p := autostartDesktopPath()
+	if !on {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	content := "[Desktop Entry]\n" +
+		"Type=Application\n" +
+		"Name=Claude TTS Tray\n" +
+		"Exec=" + exe + "\n" +
+		"X-GNOME-Autostart-enabled=true\n" +
+		"NoDisplay=true\n"
+	return os.WriteFile(p, []byte(content), 0o644)
 }
