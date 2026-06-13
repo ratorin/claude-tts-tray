@@ -1,0 +1,14 @@
+# ビルド成果物
+*.exe
+
+# ログ
+*.log
+
+# 作業用(個人設定バックアップ・テストフィクスチャ等)。gen_icon.py だけ残す。
+/temp/*
+!/temp/gen_icon.py
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
