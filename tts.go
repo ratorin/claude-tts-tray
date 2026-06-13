@@ -199,8 +199,8 @@ var notifyCacheMu sync.Mutex
 // 合成できなければ空文字を返す。同時に呼ばれても合成は1回だけ(mutexで直列化)。
 func ensureNotifyCache() string {
 	c := getCfg()
-	if c.NotifyText == "" {
-		return ""
+	if c.NotifyText == "" || strings.TrimSpace(c.Server) == "" {
+		return "" // サーバー未設定時は合成しない(既定は効果音)
 	}
 	path := notifyCachePath(c.Server, c.NotifySpeaker, c.NotifyText)
 
@@ -277,6 +277,43 @@ func playFile(path string) {
 				refreshIcon()
 			}
 		}()
+		if ctx.Err() != nil {
+			return
+		}
+		playSoundFile(path)
+	}()
+}
+
+// playSoundBytes は埋め込みWAVバイト列を一時ファイルに書いて再生する(既定効果音用)。
+func playSoundBytes(wav []byte) {
+	if len(wav) == 0 {
+		return
+	}
+	playMu.Lock()
+	if playCancel != nil {
+		playCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	playCancel = cancel
+	playMu.Unlock()
+	stopSound()
+
+	go func() {
+		activePlays.Add(1)
+		refreshIcon()
+		defer func() {
+			if activePlays.Add(-1) == 0 {
+				refreshIcon()
+			}
+		}()
+		f, err := os.CreateTemp("", "cc_snd_*.wav")
+		if err != nil {
+			return
+		}
+		path := f.Name()
+		_, _ = f.Write(wav)
+		_ = f.Close()
+		defer os.Remove(path)
 		if ctx.Err() != nil {
 			return
 		}

@@ -8,4 +8,5 @@
 *.vbs text eol=crlf
 *.ico binary
 *.png binary
+*.wav binary
 *.exe binary

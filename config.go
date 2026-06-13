@@ -40,10 +40,10 @@ func configPath() string {
 func defaultConfig() Config {
 	return Config{
 		Enabled:       true,
-		Server:        "http://127.0.0.1:10101", // ローカルのAivisSpeech既定。VOICEVOXなら50021
-		Speaker:       1325133120,               // AivisSpeech 花音 / ノーマル (読み上げ)
-		NotifySpeaker: 1325133120,               // 確認(初期値は読み上げと同じ)
-		NotifyMode:    "speak",
+		Server:        "",         // 既定はサーバー無し → 効果音のみ。設定ページ/configで接続する
+		Speaker:       1325133120, // (サーバー接続時に使う既定話者。例: AivisSpeech 花音)
+		NotifySpeaker: 1325133120,
+		NotifyMode:    "chime", // 既定は効果音。サーバー接続+「発話」で読み上げ
 		NotifyText:    "確認してください",
 		MaxChars:      600,
 		Port:          7331,

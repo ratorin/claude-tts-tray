@@ -116,6 +116,12 @@ func handleStop(w http.ResponseWriter, r *http.Request) {
 	if !c.Enabled {
 		return
 	}
+	// サーバー未設定なら合成せず「完了」効果音だけ鳴らす(既定動作)
+	if strings.TrimSpace(c.Server) == "" {
+		logLine("stop: no server -> done sound")
+		playSoundBytes(soundDone)
+		return
+	}
 	var payload struct {
 		TranscriptPath string `json:"transcript_path"`
 	}
@@ -140,13 +146,13 @@ func handleNotify(w http.ResponseWriter, r *http.Request) {
 	if !c.Enabled {
 		return
 	}
-	switch c.NotifyMode {
-	case "none":
+	switch {
+	case c.NotifyMode == "none":
 		return
-	case "chime":
-		chime() // 発話中ならそれを止めてからシステム音
-	default: // speak
-		playNotify() // キャッシュ即再生(無ければ初回ライブ合成+キャッシュ作成)
+	case c.NotifyMode == "speak" && strings.TrimSpace(c.Server) != "":
+		playNotify() // 発話(サーバーで合成、キャッシュ即再生)
+	default: // "chime" または サーバー未設定 → 埋め込み効果音
+		playSoundBytes(soundNotify)
 	}
 }
 
