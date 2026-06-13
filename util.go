@@ -36,3 +36,8 @@ func logLine(msg string) {
 func itoa(n int) string {
 	return strconv.Itoa(n)
 }
+
+// boolStr は bool を "true"/"false" にする。
+func boolStr(b bool) string {
+	return strconv.FormatBool(b)
+}

@@ -40,15 +40,14 @@ func configPath() string {
 func defaultConfig() Config {
 	return Config{
 		Enabled:       true,
-		Server:        "http://100.79.167.35:10101",
-		Speaker:       1325133120, // 花音 / ノーマル (読み上げ)
-		NotifySpeaker: 1325133120, // 確認(初期値は読み上げと同じ)
+		Server:        "http://127.0.0.1:10101", // ローカルのAivisSpeech既定。VOICEVOXなら50021
+		Speaker:       1325133120,               // AivisSpeech 花音 / ノーマル (読み上げ)
+		NotifySpeaker: 1325133120,               // 確認(初期値は読み上げと同じ)
 		NotifyMode:    "speak",
 		NotifyText:    "確認してください",
 		MaxChars:      600,
 		Port:          7331,
 		Servers: map[string]string{
-			"AivisSpeech (リモート)": "http://100.79.167.35:10101",
 			"AivisSpeech (ローカル)": "http://127.0.0.1:10101",
 			"VOICEVOX (ローカル)":    "http://127.0.0.1:50021",
 		},

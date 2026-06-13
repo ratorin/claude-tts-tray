@@ -136,6 +136,7 @@ func handleNotify(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "ok")
 
 	c := getCfg()
+	logLine("notify received (mode=" + c.NotifyMode + " enabled=" + boolStr(c.Enabled) + ")")
 	if !c.Enabled {
 		return
 	}
