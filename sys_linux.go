@@ -76,6 +76,9 @@ func openBrowser(url string) {
 	}
 }
 
+// applyMenuTheme はWindows専用のメニュー文字色対策。Linuxでは何もしない。
+func applyMenuTheme() {}
+
 // --- スタートアップ(ログイン時自動起動): XDG autostart 方式 ---------------
 // ~/.config/autostart/claude-tts-tray.desktop を置く/消すだけ。
 

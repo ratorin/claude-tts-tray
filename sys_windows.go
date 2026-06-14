@@ -49,6 +49,26 @@ func stopSound() {
 	procPlaySound.Call(0, 0, 0)
 }
 
+// --- メニュー文字色対策(Windows 11 25H2 等のクラシックメニュー描画ゆらぎ) ---
+// トレイ右クリックメニューの文字が白く潰れ、ホバーで見える事象への対処(再発予防の保険)。
+// uxtheme の SetPreferredAppMode(AllowDark) でアプリをテーマ対応にし、FlushMenuThemes() で
+// テーマキャッシュを再構築する。Windows の明/暗設定に従ってメニュー文字色が正しく解決される。
+// どちらも uxtheme の序数エクスポート(Win10 1809+/Win11)。未対応環境では no-op。
+func applyMenuTheme() {
+	const allowDark = 1 // PreferredAppMode: 0=Default 1=AllowDark 2=ForceDark 3=ForceLight
+	h, err := windows.LoadLibrary("uxtheme.dll")
+	if err != nil {
+		return
+	}
+	defer windows.FreeLibrary(h)
+	if p, e := windows.GetProcAddressByOrdinal(h, 135); e == nil { // SetPreferredAppMode
+		syscall.SyscallN(p, uintptr(allowDark))
+	}
+	if p, e := windows.GetProcAddressByOrdinal(h, 136); e == nil { // FlushMenuThemes
+		syscall.SyscallN(p)
+	}
+}
+
 // openBrowser は既定のブラウザでURLを開く。
 func openBrowser(url string) {
 	if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start(); err != nil {

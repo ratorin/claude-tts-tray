@@ -29,6 +29,7 @@ func main() {
 		logLine("server start failed: " + err.Error())
 	}
 	go ensureNotifyCache() // 確認音を先に用意して初回から即時に
+	applyMenuTheme()       // メニュー文字色対策(Win)。プロセスのメニューテーマを先に確定
 	systray.Run(onReady, func() {})
 }
 
@@ -79,16 +80,13 @@ func onReady() {
 		}
 	}()
 
-	// 音声選択(読み上げ用と確認用を別々に)。話者一覧は一度だけ取得して共有。
+	// 音声選択(読み上げ/確認)。各メニューは「効果音（合成なし）」＋「人 ▸ 種類」の2段。
+	// 話者一覧は一度だけ取得して共有。
 	speakers, sErr := fetchSpeakers(getCfg().Server)
-	mVoiceRead := systray.AddMenuItem("音声（読み上げ）", "返答読み上げの話者")
+	mVoiceRead := systray.AddMenuItem("音声（読み上げ）", "返答読み上げ: 効果音 or 話者")
 	buildVoiceMenu(mVoiceRead, speakers, sErr, "read")
-	mVoiceNotify := systray.AddMenuItem("音声（確認）", "確認通知の話者")
+	mVoiceNotify := systray.AddMenuItem("音声（確認）", "確認通知: 効果音 or 話者")
 	buildVoiceMenu(mVoiceNotify, speakers, sErr, "notify")
-
-	// 確認音
-	mNotify := systray.AddMenuItem("確認音", "確認(permission等)の通知音")
-	buildNotifyMenu(mNotify)
 
 	systray.AddSeparator()
 
@@ -136,6 +134,9 @@ func onReady() {
 		cancelCurrent()
 		systray.Quit()
 	}()
+
+	// メニュー構築後にもテーマを再フラッシュ(文字色のゆらぎ対策・Winのみ実体)
+	applyMenuTheme()
 }
 
 // buildServerMenu はサーバー選択肢(ラジオ)を構築する。
@@ -186,83 +187,161 @@ func selectServer(u string) {
 	logLine("server switched to " + u)
 }
 
-// buildVoiceMenu は話者一覧(ラジオ)を構築する。
-// which="read" は読み上げ話者、"notify" は確認話者を設定する。
+// buildVoiceMenu は「効果音（合成なし）＋ 人 ▸ 種類」の2段メニューを構築する。
+// 効果音と話者は1つのラジオ(排他)として扱う。
+// which="read"  は読み上げ(ReadMode/Speaker)、"notify" は確認(NotifyMode/NotifySpeaker)を設定する。
 func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, which string) {
-	if err != nil {
-		parent.AddSubMenuItem("(取得失敗: サーバー未起動?)", err.Error()).Disable()
-		return
+	// 効果音の選択肢(用途別)と「音声」を表すモード値
+	effects := []struct{ key, label string }{
+		{"chime", "チャイム"},
+		{"none", "なし"},
 	}
+	voiceMode := "speak" // 確認で「発話」を表す値
+	if which == "read" {
+		effects = []struct{ key, label string }{
+			{"done", "完了音"},
+			{"chime", "チャイム"},
+			{"none", "なし"},
+		}
+		voiceMode = "voice"
+	}
+
 	c := getCfg()
-	current := c.Speaker
-	if which == "notify" {
-		current = c.NotifySpeaker
+	curMode, curSpeaker := c.NotifyMode, c.NotifySpeaker
+	if which == "read" {
+		curMode, curSpeaker = c.ReadMode, c.Speaker
 	}
-	var items []*systray.MenuItem
-	var ids []int
-	for _, s := range speakers {
-		for _, st := range s.Styles {
-			title := s.Name + " / " + st.Name
-			it := parent.AddSubMenuItemCheckbox(title, itoa(st.ID), st.ID == current)
-			items = append(items, it)
-			ids = append(ids, st.ID)
+
+	// (1) 効果音サブメニュー
+	const effTitle = "効果音（合成なし）"
+	var effItems []*systray.MenuItem
+	var effKeys []string
+	mEff := parent.AddSubMenuItem(effTitle, "音声合成せず効果音を鳴らす")
+	for _, e := range effects {
+		it := mEff.AddSubMenuItemCheckbox(e.label, e.key, curMode == e.key)
+		effItems = append(effItems, it)
+		effKeys = append(effKeys, e.key)
+	}
+
+	// (2) 話者: 人 ▸ 種類
+	var styleItems []*systray.MenuItem
+	var styleIDs []int
+	var personItems []*systray.MenuItem // 1段目(人)の項目。選択マーク用に保持
+	var personNames []string            // 1段目の元タイトル
+	var personIDsets [][]int            // 各人の配下スタイルID群
+	if err != nil {
+		parent.AddSubMenuItem("（音声一覧の取得失敗: サーバー未起動?）", err.Error()).Disable()
+	} else {
+		for _, s := range speakers {
+			mPerson := parent.AddSubMenuItem(s.Name, s.Name)
+			personItems = append(personItems, mPerson)
+			personNames = append(personNames, s.Name)
+			var ids []int
+			for _, st := range s.Styles {
+				checked := curMode == voiceMode && st.ID == curSpeaker
+				it := mPerson.AddSubMenuItemCheckbox(st.Name, itoa(st.ID), checked)
+				styleItems = append(styleItems, it)
+				styleIDs = append(styleIDs, st.ID)
+				ids = append(ids, st.ID)
+			}
+			personIDsets = append(personIDsets, ids)
 		}
 	}
-	for i := range items {
-		idx := i
-		go func() {
-			for range items[idx].ClickedCh {
-				updateCfg(func(c *Config) {
-					if which == "notify" {
-						c.NotifySpeaker = ids[idx]
-					} else {
-						c.Speaker = ids[idx]
-					}
-				})
-				for j, it := range items {
-					if j == idx {
-						it.Check()
-					} else {
-						it.Uncheck()
+
+	// relabel は現在の選択に応じて1段目(効果音/人)に「●」マークを付け直す。
+	// 2段目(種類)のチェックだけでは、人を開かないと現在のモデルが分からないため。
+	relabel := func() {
+		c := getCfg()
+		mode, spk := c.NotifyMode, c.NotifySpeaker
+		if which == "read" {
+			mode, spk = c.ReadMode, c.Speaker
+		}
+		effActive := mode != voiceMode // voice/speak 以外なら効果音が選択中
+		if effActive {
+			mEff.SetTitle("● " + effTitle)
+		} else {
+			mEff.SetTitle(effTitle)
+		}
+		for i, it := range personItems {
+			active := false
+			if !effActive {
+				for _, id := range personIDsets[i] {
+					if id == spk {
+						active = true
+						break
 					}
 				}
+			}
+			if active {
+				it.SetTitle("● " + personNames[i])
+			} else {
+				it.SetTitle(personNames[i])
+			}
+		}
+	}
+	relabel() // 初期表示にマークを反映
+
+	// ラジオ: 効果音と話者で排他にチェックを更新する(styleIdx/effIdx, 非該当は -1)
+	setChecks := func(styleIdx, effIdx int) {
+		for j, it := range styleItems {
+			if j == styleIdx {
+				it.Check()
+			} else {
+				it.Uncheck()
+			}
+		}
+		for j, it := range effItems {
+			if j == effIdx {
+				it.Check()
+			} else {
+				it.Uncheck()
+			}
+		}
+	}
+
+	// 効果音クリック
+	for i := range effItems {
+		idx := i
+		go func() {
+			for range effItems[idx].ClickedCh {
+				key := effKeys[idx]
+				updateCfg(func(c *Config) {
+					if which == "read" {
+						c.ReadMode = key
+					} else {
+						c.NotifyMode = key
+					}
+				})
+				setChecks(-1, idx)
+				relabel()
 				updateTooltip()
 				if which == "notify" {
-					go ensureNotifyCache() // 確認話者が変わったらキャッシュ作り直し
+					go ensureNotifyCache()
 				}
 			}
 		}()
 	}
-}
 
-
-// buildNotifyMenu は確認音の種類(ラジオ)を構築する。
-func buildNotifyMenu(parent *systray.MenuItem) {
-	c := getCfg()
-	modes := []struct {
-		key, label string
-	}{
-		{"speak", "発話「" + c.NotifyText + "」"},
-		{"chime", "チャイム音"},
-		{"none", "なし"},
-	}
-	var items []*systray.MenuItem
-	for _, m := range modes {
-		it := parent.AddSubMenuItemCheckbox(m.label, "", m.key == c.NotifyMode)
-		items = append(items, it)
-	}
-	for i := range items {
+	// 話者(種類)クリック → 音声モードに切替＋話者IDを設定
+	for i := range styleItems {
 		idx := i
-		key := modes[idx].key
 		go func() {
-			for range items[idx].ClickedCh {
-				updateCfg(func(c *Config) { c.NotifyMode = key })
-				for j, it := range items {
-					if j == idx {
-						it.Check()
+			for range styleItems[idx].ClickedCh {
+				id := styleIDs[idx]
+				updateCfg(func(c *Config) {
+					if which == "read" {
+						c.ReadMode = "voice"
+						c.Speaker = id
 					} else {
-						it.Uncheck()
+						c.NotifyMode = "speak"
+						c.NotifySpeaker = id
 					}
+				})
+				setChecks(idx, -1)
+				relabel()
+				updateTooltip()
+				if which == "notify" {
+					go ensureNotifyCache() // 確認話者が変わったらキャッシュ作り直し
 				}
 			}
 		}()

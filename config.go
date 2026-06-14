@@ -15,6 +15,7 @@ type Config struct {
 	Speaker       int               `json:"speaker"`        // 読み上げ(Stop)の話者スタイルID
 	NotifySpeaker int               `json:"notify_speaker"` // 確認(Notification)の話者スタイルID
 	NotifyMode    string            `json:"notify_mode"`    // 確認音: speak | chime | none
+	ReadMode      string            `json:"read_mode"`      // 読み上げ: voice | done | chime | none
 	NotifyText    string            `json:"notify_text"`    // speak時に読み上げる文言
 	MaxChars      int               `json:"max_chars"`      // 読み上げ最大文字数
 	Port          int               `json:"port"`           // ローカル待受ポート
@@ -43,7 +44,8 @@ func defaultConfig() Config {
 		Server:        "",         // 既定はサーバー無し → 効果音のみ。設定ページ/configで接続する
 		Speaker:       1325133120, // (サーバー接続時に使う既定話者。例: AivisSpeech 花音)
 		NotifySpeaker: 1325133120,
-		NotifyMode:    "chime", // 既定は効果音。サーバー接続+「発話」で読み上げ
+		NotifyMode:    "chime",  // 既定は効果音。サーバー接続+話者選択で発話
+		ReadMode:      "voice",  // 既定は音声。サーバー未設定なら自動で完了音にフォールバック
 		NotifyText:    "確認してください",
 		MaxChars:      600,
 		Port:          7331,
@@ -70,6 +72,9 @@ func loadConfig() {
 	}
 	if c.NotifyMode == "" {
 		c.NotifyMode = def.NotifyMode
+	}
+	if c.ReadMode == "" {
+		c.ReadMode = def.ReadMode
 	}
 	if c.NotifyText == "" {
 		c.NotifyText = def.NotifyText

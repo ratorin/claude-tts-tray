@@ -116,7 +116,18 @@ func handleStop(w http.ResponseWriter, r *http.Request) {
 	if !c.Enabled {
 		return
 	}
-	// サーバー未設定なら合成せず「完了」効果音だけ鳴らす(既定動作)
+	// 読み上げモード: 効果音/なし は合成せずここで完結
+	switch c.ReadMode {
+	case "none":
+		return
+	case "done":
+		playSoundBytes(soundDone)
+		return
+	case "chime":
+		playSoundBytes(soundNotify)
+		return
+	}
+	// "voice"(既定): サーバーがあれば読み上げ、無ければ完了音にフォールバック
 	if strings.TrimSpace(c.Server) == "" {
 		logLine("stop: no server -> done sound")
 		playSoundBytes(soundDone)

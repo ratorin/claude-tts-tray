@@ -8,6 +8,10 @@
 # 作業用スクラッチ(個人設定バックアップ・テストフィクスチャ等)
 /temp/
 
+# Python キャッシュ(アイコン生成スクリプト)
+__pycache__/
+*.pyc
+
 # OS
 Thumbs.db
 desktop.ini
