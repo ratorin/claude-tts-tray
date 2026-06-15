@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"sync"
 	"sync/atomic"
 
 	"fyne.io/systray"
@@ -248,7 +249,31 @@ func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, 
 		}
 	}
 
-	// relabel は現在の選択に応じて1段目(効果音/人)に「●」マークを付け直す。
+	// 【重要・Linux DBus対策】選択のたびに全項目を更新すると systray(DBus) が詰まり
+	// メニューがフリーズして見える。そこで現在チェック中の index を保持し、
+	// 変わった項目だけ Check/Uncheck・SetTitle する。
+	// 初期チェック状態は AddSubMenuItemCheckbox 済みなので、それに合わせて初期化する。
+	checkedStyle, checkedEff := -1, -1
+	if curMode != voiceMode {
+		for j, k := range effKeys {
+			if k == curMode {
+				checkedEff = j
+				break
+			}
+		}
+	} else {
+		for j, id := range styleIDs {
+			if id == curSpeaker {
+				checkedStyle = j
+				break
+			}
+		}
+	}
+	markedPerson := -1
+	effMarked := false
+	var selMu sync.Mutex // 選択状態(checked*/marked*)の更新を直列化
+
+	// relabel は1段目(効果音/人)の「●」マークを、変化があった項目だけ付け替える。
 	// 2段目(種類)のチェックだけでは、人を開かないと現在のモデルが分からないため。
 	relabel := func() {
 		c := getCfg()
@@ -257,45 +282,63 @@ func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, 
 			mode, spk = c.ReadMode, c.Speaker
 		}
 		effActive := mode != voiceMode // voice/speak 以外なら効果音が選択中
-		if effActive {
-			mEff.SetTitle("● " + effTitle)
-		} else {
-			mEff.SetTitle(effTitle)
-		}
-		for i, it := range personItems {
-			active := false
-			if !effActive {
-				for _, id := range personIDsets[i] {
+		activePerson := -1
+		if !effActive {
+			for i, ids := range personIDsets {
+				for _, id := range ids {
 					if id == spk {
-						active = true
+						activePerson = i
 						break
 					}
 				}
+				if activePerson >= 0 {
+					break
+				}
 			}
-			if active {
-				it.SetTitle("● " + personNames[i])
+		}
+		selMu.Lock()
+		defer selMu.Unlock()
+		if effActive != effMarked {
+			if effActive {
+				mEff.SetTitle("● " + effTitle)
 			} else {
-				it.SetTitle(personNames[i])
+				mEff.SetTitle(effTitle)
 			}
+			effMarked = effActive
+		}
+		if activePerson != markedPerson {
+			if markedPerson >= 0 {
+				personItems[markedPerson].SetTitle(personNames[markedPerson])
+			}
+			if activePerson >= 0 {
+				personItems[activePerson].SetTitle("● " + personNames[activePerson])
+			}
+			markedPerson = activePerson
 		}
 	}
 	relabel() // 初期表示にマークを反映
 
-	// ラジオ: 効果音と話者で排他にチェックを更新する(styleIdx/effIdx, 非該当は -1)
+	// setChecks は効果音/話者のチェックを、変わった項目だけ付け替える(排他)。非該当は -1。
 	setChecks := func(styleIdx, effIdx int) {
-		for j, it := range styleItems {
-			if j == styleIdx {
-				it.Check()
-			} else {
-				it.Uncheck()
+		selMu.Lock()
+		defer selMu.Unlock()
+		if checkedStyle != styleIdx {
+			if checkedStyle >= 0 {
+				styleItems[checkedStyle].Uncheck()
 			}
+			if styleIdx >= 0 {
+				styleItems[styleIdx].Check()
+			}
+			checkedStyle = styleIdx
 		}
-		for j, it := range effItems {
-			if j == effIdx {
-				it.Check()
-			} else {
-				it.Uncheck()
+		if checkedEff != effIdx {
+			if checkedEff >= 0 {
+				effItems[checkedEff].Uncheck()
 			}
+			if effIdx >= 0 {
+				effItems[effIdx].Check()
+			}
+			checkedEff = effIdx
 		}
 	}
 
