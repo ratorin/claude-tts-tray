@@ -121,9 +121,17 @@ func handleStop(w http.ResponseWriter, r *http.Request) {
 	case "none":
 		return
 	case "done":
+		if recentNotify(1500 * time.Millisecond) { // 確認チャイム直後は完了音を抑止(チャイム優先)
+			logLine("stop: recent notify -> skip done")
+			return
+		}
 		playSoundBytes(soundDone)
 		return
 	case "chime":
+		if recentNotify(1500 * time.Millisecond) {
+			logLine("stop: recent notify -> skip chime")
+			return
+		}
 		playSoundBytes(soundNotify)
 		return
 	}
@@ -161,8 +169,10 @@ func handleNotify(w http.ResponseWriter, r *http.Request) {
 	case c.NotifyMode == "none":
 		return
 	case c.NotifyMode == "speak" && strings.TrimSpace(c.Server) != "":
+		markNotify()
 		playNotify() // 発話(サーバーで合成、キャッシュ即再生)
 	default: // "chime" または サーバー未設定 → 埋め込み効果音
+		markNotify()
 		playSoundBytes(soundNotify)
 	}
 }

@@ -26,6 +26,23 @@ var activePlays atomic.Int32
 // 読み上げ(speak)はこの間 開始を待ち、短い確認音を潰さないようにする(確認音を優先)。
 var notifyPlaying atomic.Bool
 
+// lastNotifyNano は最後に確認音(notify)を鳴らそうとした時刻(UnixNano)。
+// 確認(AskUserQuestion等)はほぼ同時に応答終了(Stop)も発火するため、Stopの完了音が
+// 確認チャイムを潰しうる。直近に確認音が出ていれば Stop 側の効果音を抑止する判断に使う。
+var lastNotifyNano atomic.Int64
+
+// markNotify は確認音の発火時刻を記録する。
+func markNotify() { lastNotifyNano.Store(time.Now().UnixNano()) }
+
+// recentNotify は直近 d 以内に確認音が発火していれば true を返す。
+func recentNotify(d time.Duration) bool {
+	last := lastNotifyNano.Load()
+	if last == 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, last)) < d
+}
+
 // isSpeaking は現在発話中かどうかを返す(トレイアイコン切替に使用)。
 func isSpeaking() bool { return activePlays.Load() > 0 }
 
@@ -412,13 +429,13 @@ var (
 	reURL       = regexp.MustCompile(`https?://\S+`)
 	// 裸のURL: www.〜 や ドメイン+TLD(+パス)。http(s)無しでも除去する。
 	reBareURL  = regexp.MustCompile(`(?i)(?:www\.[^\s、。）)」』]+|[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev|jp|co|ai|app|gg|sh|me|info|biz|tv|cloud|page|xyz|tokyo|gov|edu)(?:/[^\s、。）)」』]*)?)`)
-	reWinPath   = regexp.MustCompile(`[A-Za-z]:[\\/][^\s]+`)
-	reUnixPath  = regexp.MustCompile(`/[\w.\-]+(?:/[\w.\-]+)+`) // /usr/local/bin 等(2段以上)
-	reHeading   = regexp.MustCompile(`(?m)^[ \t]*#{1,6}[ \t]*`)
-	reBullet    = regexp.MustCompile(`(?m)^[ \t]*[-*+>][ \t]+`)
-	reNumbered  = regexp.MustCompile(`(?m)^[ \t]*\d+\.[ \t]+`)
-	reSpaces    = regexp.MustCompile(`[ \t]+`)
-	reNewlines  = regexp.MustCompile(`\n{2,}`)
+	reWinPath  = regexp.MustCompile(`[A-Za-z]:[\\/][^\s]+`)
+	reUnixPath = regexp.MustCompile(`/[\w.\-]+(?:/[\w.\-]+)+`) // /usr/local/bin 等(2段以上)
+	reHeading  = regexp.MustCompile(`(?m)^[ \t]*#{1,6}[ \t]*`)
+	reBullet   = regexp.MustCompile(`(?m)^[ \t]*[-*+>][ \t]+`)
+	reNumbered = regexp.MustCompile(`(?m)^[ \t]*\d+\.[ \t]+`)
+	reSpaces   = regexp.MustCompile(`[ \t]+`)
+	reNewlines = regexp.MustCompile(`\n{2,}`)
 )
 
 // cleanForSpeech はコード/マークダウンを除去し、読み上げ向けの地の文に整える。
@@ -572,4 +589,3 @@ func readAllClose(resp *http.Response) ([]byte, error) {
 	_, err := b.ReadFrom(resp.Body)
 	return b.Bytes(), err
 }
-
