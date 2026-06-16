@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"os/exec"
-	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -214,49 +213,25 @@ func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, 
 		curMode, curSpeaker = c.ReadMode, c.Speaker
 	}
 
-	// Cinnamon等のlibdbusmenuは「3階層＋チェックボックス」の入れ子が不安定で、
-	// 人 ▸ 種類 の3階層目が選べない。Linuxではメニューを浅く(2階層)し、効果音・
-	// 「人 / 種類」を parent 直下のチェック項目としてフラットに並べる(Windowsは2段のまま)。
-	flat := runtime.GOOS == "linux"
-
-	// (1) 効果音
+	// (1) 効果音サブメニュー
 	const effTitle = "効果音（合成なし）"
 	var effItems []*systray.MenuItem
 	var effKeys []string
-	var mEff *systray.MenuItem // 入れ子モードのみ使用(フラットでは nil)
-	effParent := parent
-	if !flat {
-		mEff = parent.AddSubMenuItem(effTitle, "音声合成せず効果音を鳴らす")
-		effParent = mEff
-	}
+	mEff := parent.AddSubMenuItem(effTitle, "音声合成せず効果音を鳴らす")
 	for _, e := range effects {
-		label := e.label
-		if flat {
-			label = "効果音: " + e.label
-		}
-		it := effParent.AddSubMenuItemCheckbox(label, e.key, curMode == e.key)
+		it := mEff.AddSubMenuItemCheckbox(e.label, e.key, curMode == e.key)
 		effItems = append(effItems, it)
 		effKeys = append(effKeys, e.key)
 	}
 
-	// (2) 話者
+	// (2) 話者: 人 ▸ 種類
 	var styleItems []*systray.MenuItem
 	var styleIDs []int
-	var personItems []*systray.MenuItem // 入れ子モードの1段目(人)。選択マーク用
-	var personNames []string
-	var personIDsets [][]int
+	var personItems []*systray.MenuItem // 1段目(人)の項目。選択マーク用に保持
+	var personNames []string            // 1段目の元タイトル
+	var personIDsets [][]int            // 各人の配下スタイルID群
 	if err != nil {
 		parent.AddSubMenuItem("（音声一覧の取得失敗: サーバー未起動?）", err.Error()).Disable()
-	} else if flat {
-		// フラット: 「人 / 種類」を parent 直下に直接並べる(3階層を作らない)
-		for _, s := range speakers {
-			for _, st := range s.Styles {
-				checked := curMode == voiceMode && st.ID == curSpeaker
-				it := parent.AddSubMenuItemCheckbox(s.Name+" / "+st.Name, itoa(st.ID), checked)
-				styleItems = append(styleItems, it)
-				styleIDs = append(styleIDs, st.ID)
-			}
-		}
 	} else {
 		for _, s := range speakers {
 			mPerson := parent.AddSubMenuItem(s.Name, s.Name)
@@ -301,9 +276,6 @@ func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, 
 	// relabel は1段目(効果音/人)の「●」マークを、変化があった項目だけ付け替える。
 	// 2段目(種類)のチェックだけでは、人を開かないと現在のモデルが分からないため。
 	relabel := func() {
-		if flat {
-			return // フラットは同一階層のチェックで選択を示すため ● マーク不要
-		}
 		c := getCfg()
 		mode, spk := c.NotifyMode, c.NotifySpeaker
 		if which == "read" {
