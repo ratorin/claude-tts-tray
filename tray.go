@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -192,6 +193,13 @@ func selectServer(u string) {
 // 効果音と話者は1つのラジオ(排他)として扱う。
 // which="read"  は読み上げ(ReadMode/Speaker)、"notify" は確認(NotifyMode/NotifySpeaker)を設定する。
 func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, which string) {
+	// Linux(Cinnamon等)は深い入れ子サブメニューが不安定で3階層目が空になる。
+	// トレイは「音声/チャイム/OFF」の浅いモード選択のみにし、話者選択は設定ページ(Web)で行う。
+	if runtime.GOOS == "linux" {
+		buildVoiceModeMenu(parent, which)
+		return
+	}
+	// --- 以下 Windows: 効果音 + 人▸種類 の2段 ---
 	// 効果音の選択肢(用途別)と「音声」を表すモード値
 	effects := []struct{ key, label string }{
 		{"chime", "チャイム"},
@@ -385,6 +393,57 @@ func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, 
 				updateTooltip()
 				if which == "notify" {
 					go ensureNotifyCache() // 確認話者が変わったらキャッシュ作り直し
+				}
+			}
+		}()
+	}
+}
+
+// buildVoiceModeMenu は Linux 用の簡易モード選択(音声/チャイム/OFF)を作る。
+// 具体的な話者選択は設定ページ(ブラウザ)で行う(深い入れ子を避けるため)。
+func buildVoiceModeMenu(parent *systray.MenuItem, which string) {
+	voiceVal := "voice"
+	if which == "notify" {
+		voiceVal = "speak"
+	}
+	opts := []struct{ key, label string }{
+		{voiceVal, "音声"},
+		{"chime", "チャイム"},
+		{"none", "OFF"},
+	}
+	cur := getCfg().ReadMode
+	if which == "notify" {
+		cur = getCfg().NotifyMode
+	}
+	var items []*systray.MenuItem
+	var keys []string
+	for _, o := range opts {
+		it := parent.AddSubMenuItemCheckbox(o.label, o.key, o.key == cur)
+		items = append(items, it)
+		keys = append(keys, o.key)
+	}
+	for i := range items {
+		idx := i
+		go func() {
+			for range items[idx].ClickedCh {
+				key := keys[idx]
+				updateCfg(func(c *Config) {
+					if which == "read" {
+						c.ReadMode = key
+					} else {
+						c.NotifyMode = key
+					}
+				})
+				for j, it := range items {
+					if j == idx {
+						it.Check()
+					} else {
+						it.Uncheck()
+					}
+				}
+				updateTooltip()
+				if which == "notify" {
+					go ensureNotifyCache()
 				}
 			}
 		}()

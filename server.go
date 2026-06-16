@@ -6,7 +6,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -30,6 +32,7 @@ func startServer(port int) error {
 	mux.HandleFunc("/servers/add", handleServerAdd)
 	mux.HandleFunc("/servers/delete", handleServerDelete)
 	mux.HandleFunc("/servers/use", handleServerUse)
+	mux.HandleFunc("/voice/set", handleVoiceSet)
 
 	// 127.0.0.1 のみにバインド(外部公開しない)
 	var ln net.Listener
@@ -199,9 +202,21 @@ type uiServer struct {
 	URL     string
 	Current bool
 }
+type uiOption struct {
+	Value, Label string
+	Selected     bool
+}
+type uiGroup struct {
+	Label   string
+	Options []uiOption
+}
 type uiData struct {
-	Servers []uiServer
-	Port    int
+	Servers     []uiServer
+	Port        int
+	ShowVoice   bool      // Linux のみ話者選択UIを表示
+	HasServer   bool      // 話者一覧が取得できたか
+	ReadVoice   []uiGroup // 読み上げ話者の選択肢
+	NotifyVoice []uiGroup // 確認話者の選択肢
 }
 
 var uiTmpl = template.Must(template.New("ui").Parse(`<!doctype html>
@@ -241,6 +256,25 @@ var uiTmpl = template.Must(template.New("ui").Parse(`<!doctype html>
 </tr>
 {{end}}
 </table>
+{{if .ShowVoice}}
+<h2>音声（話者）</h2>
+{{if .HasServer}}
+<table>
+<tr><th>用途</th><th>話者（「音声」モード時に使用）</th></tr>
+<tr><td>読み上げ</td><td>
+ <form class="inline" method="post" action="/voice/set"><input type="hidden" name="which" value="read">
+  <select name="spk" onchange="this.form.submit()">{{range .ReadVoice}}<optgroup label="{{.Label}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}</select>
+ </form></td></tr>
+<tr><td>確認</td><td>
+ <form class="inline" method="post" action="/voice/set"><input type="hidden" name="which" value="notify">
+  <select name="spk" onchange="this.form.submit()">{{range .NotifyVoice}}<optgroup label="{{.Label}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}</select>
+ </form></td></tr>
+</table>
+<p class="note">※ 音声 / チャイム / OFF の切替はトレイメニューで。ここは「音声」のとき使う話者の選択です（変更は即保存）。</p>
+{{else}}
+<p class="note">※ 話者を選ぶにはサーバー（VOICEVOX/AivisSpeech）を接続してください。</p>
+{{end}}
+{{end}}
 <h2>サーバーを追加</h2>
 <form method="post" action="/servers/add">
  <p>表示名: <input type="text" name="name" placeholder="自宅サーバー" required></p>
@@ -270,8 +304,61 @@ func handleUI(w http.ResponseWriter, r *http.Request) {
 		u := c.Servers[name]
 		data.Servers = append(data.Servers, uiServer{Name: name, URL: u, Current: u == c.Server})
 	}
+	// Linux はトレイの深い入れ子が不安定なため、話者選択をこのページで行う。
+	if runtime.GOOS == "linux" {
+		data.ShowVoice = true
+		speakers, sErr := fetchSpeakers(c.Server)
+		data.HasServer = sErr == nil && len(speakers) > 0
+		data.ReadVoice = buildVoiceGroups(speakers, c.Speaker)
+		data.NotifyVoice = buildVoiceGroups(speakers, c.NotifySpeaker)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = uiTmpl.Execute(w, data)
+}
+
+// buildVoiceGroups は話者一覧を人ごとの optgroup に整形する(設定ページのドロップダウン用)。
+func buildVoiceGroups(speakers []apiSpeaker, curID int) []uiGroup {
+	var groups []uiGroup
+	for _, s := range speakers {
+		var opts []uiOption
+		for _, st := range s.Styles {
+			opts = append(opts, uiOption{Value: itoa(st.ID), Label: st.Name, Selected: st.ID == curID})
+		}
+		groups = append(groups, uiGroup{Label: s.Name, Options: opts})
+	}
+	return groups
+}
+
+// handleVoiceSet は設定ページからの話者選択を受け、読み上げ/確認の話者IDを更新する。
+// モード(音声/チャイム/OFF)はトレイ側で設定するため、ここでは話者IDのみ変更する。
+func handleVoiceSet(w http.ResponseWriter, r *http.Request) {
+	if blockedCrossOrigin(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	_ = r.ParseForm()
+	which := r.FormValue("which")
+	id, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("spk")))
+	if id > 0 {
+		speakers, _ := fetchSpeakers(getCfg().Server)
+		if ensureValidSpeaker(speakers, id) == id { // 登録済み話者のみ採用
+			updateCfg(func(c *Config) {
+				if which == "notify" {
+					c.NotifySpeaker = id
+				} else {
+					c.Speaker = id
+				}
+			})
+			if which == "notify" {
+				go ensureNotifyCache()
+			}
+			logLine("voice speaker set: " + which + " = " + itoa(id))
+		}
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func handleServerAdd(w http.ResponseWriter, r *http.Request) {
