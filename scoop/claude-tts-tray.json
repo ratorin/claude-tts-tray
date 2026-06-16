@@ -1,0 +1,31 @@
+{
+    "version": "0.1.0",
+    "description": "Claude Code の応答読み上げ・確認音を鳴らす常駐トレイアプリ",
+    "homepage": "https://github.com/ratorin/claude-tts-tray",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/ratorin/claude-tts-tray/releases/download/v0.1.0/claude-tts-tray.exe",
+            "hash": "3f2947c33bf68f48da59d1d4941d74fe8af467eefefc34731d5ead24a935b8d0"
+        }
+    },
+    "bin": "claude-tts-tray.exe",
+    "shortcuts": [
+        [
+            "claude-tts-tray.exe",
+            "Claude TTS Tray"
+        ]
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/ratorin/claude-tts-tray/releases/download/v$version/claude-tts-tray.exe"
+            }
+        }
+    },
+    "notes": [
+        "起動: スタートメニューの『Claude TTS Tray』、または `claude-tts-tray` を実行するとトレイに常駐します。",
+        "読み上げ(音声合成)には VOICEVOX/AivisSpeech の接続が必要です(無接続でも完了音/チャイムは鳴ります)。"
+    ]
+}
