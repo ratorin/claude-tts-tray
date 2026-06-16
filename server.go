@@ -211,12 +211,13 @@ type uiGroup struct {
 	Options []uiOption
 }
 type uiData struct {
-	Servers     []uiServer
-	Port        int
-	ShowVoice   bool      // Linux のみ話者選択UIを表示
-	HasServer   bool      // 話者一覧が取得できたか
-	ReadVoice   []uiGroup // 読み上げ話者の選択肢
-	NotifyVoice []uiGroup // 確認話者の選択肢
+	Servers   []uiServer
+	Port      int
+	ShowVoice bool        // Linux のみ話者選択UIを表示
+	HasServer bool        // 話者一覧が取得できたか
+	VoiceData template.JS // 話者データ JSON: [{n,s:[{id,t}]}]
+	ReadCur   int         // 読み上げの現在話者ID
+	NotifyCur int         // 確認の現在話者ID
 }
 
 var uiTmpl = template.Must(template.New("ui").Parse(`<!doctype html>
@@ -260,17 +261,21 @@ var uiTmpl = template.Must(template.New("ui").Parse(`<!doctype html>
 <h2>音声（話者）</h2>
 {{if .HasServer}}
 <table>
-<tr><th>用途</th><th>話者（「音声」モード時に使用）</th></tr>
-<tr><td>読み上げ</td><td>
- <form class="inline" method="post" action="/voice/set"><input type="hidden" name="which" value="read">
-  <select name="spk" onchange="this.form.submit()">{{range .ReadVoice}}<optgroup label="{{.Label}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}</select>
- </form></td></tr>
-<tr><td>確認</td><td>
- <form class="inline" method="post" action="/voice/set"><input type="hidden" name="which" value="notify">
-  <select name="spk" onchange="this.form.submit()">{{range .NotifyVoice}}<optgroup label="{{.Label}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}</select>
- </form></td></tr>
+<tr><th>用途</th><th>人</th><th>種類</th></tr>
+<tr><td>読み上げ</td><td><select id="read_person" onchange="vPerson('read')"></select></td><td><div id="read_styles"></div></td></tr>
+<tr><td>確認</td><td><select id="notify_person" onchange="vPerson('notify')"></select></td><td><div id="notify_styles"></div></td></tr>
 </table>
-<p class="note">※ 音声 / チャイム / OFF の切替はトレイメニューで。ここは「音声」のとき使う話者の選択です（変更は即保存）。</p>
+<p class="note">※ 人を選ぶと種類がボタンで出ます。種類を選ぶと即保存。音声/チャイム/OFF の切替はトレイメニューで。</p>
+<script>
+var SPK={{.VoiceData}};
+var CUR={read:{{.ReadCur}},notify:{{.NotifyCur}}};
+function vFillP(w){var p=document.getElementById(w+'_person');p.innerHTML='';for(var i=0;i<SPK.length;i++){var o=document.createElement('option');o.value=i;o.text=SPK[i].n;p.appendChild(o);}}
+function vFillS(w){var pi=document.getElementById(w+'_person').value;var box=document.getElementById(w+'_styles');box.innerHTML='';var st=SPK[pi].s;for(var j=0;j<st.length;j++){var lb=document.createElement('label');lb.style.marginRight='14px';var r=document.createElement('input');r.type='radio';r.name='st_'+w;r.value=st[j].id;if(st[j].id==CUR[w])r.checked=true;r.addEventListener('change',function(){vSave(w);});lb.appendChild(r);lb.appendChild(document.createTextNode(' '+st[j].t));box.appendChild(lb);}}
+function vPerson(w){vFillS(w);}
+function vSave(w){var r=document.querySelector('input[name="st_'+w+'"]:checked');if(!r)return;var f=document.createElement('form');f.method='post';f.action='/voice/set';f.innerHTML='<input name="which" value="'+w+'"><input name="spk" value="'+r.value+'">';document.body.appendChild(f);f.submit();}
+function vInit(w){vFillP(w);var pi=0;for(var i=0;i<SPK.length;i++)for(var j=0;j<SPK[i].s.length;j++)if(SPK[i].s[j].id==CUR[w])pi=i;document.getElementById(w+'_person').value=pi;vFillS(w);}
+window.addEventListener('load',function(){vInit('read');vInit('notify');});
+</script>
 {{else}}
 <p class="note">※ 話者を選ぶにはサーバー（VOICEVOX/AivisSpeech）を接続してください。</p>
 {{end}}
@@ -309,24 +314,37 @@ func handleUI(w http.ResponseWriter, r *http.Request) {
 		data.ShowVoice = true
 		speakers, sErr := fetchSpeakers(c.Server)
 		data.HasServer = sErr == nil && len(speakers) > 0
-		data.ReadVoice = buildVoiceGroups(speakers, c.Speaker)
-		data.NotifyVoice = buildVoiceGroups(speakers, c.NotifySpeaker)
+		data.VoiceData = buildVoiceData(speakers)
+		data.ReadCur = c.Speaker
+		data.NotifyCur = c.NotifySpeaker
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = uiTmpl.Execute(w, data)
 }
 
-// buildVoiceGroups は話者一覧を人ごとの optgroup に整形する(設定ページのドロップダウン用)。
-func buildVoiceGroups(speakers []apiSpeaker, curID int) []uiGroup {
-	var groups []uiGroup
-	for _, s := range speakers {
-		var opts []uiOption
-		for _, st := range s.Styles {
-			opts = append(opts, uiOption{Value: itoa(st.ID), Label: st.Name, Selected: st.ID == curID})
-		}
-		groups = append(groups, uiGroup{Label: s.Name, Options: opts})
+// buildVoiceData は話者一覧を JS 用 JSON([{n,s:[{id,t}]}]) に整形する(人ドロップ＋種類ラジオ用)。
+func buildVoiceData(speakers []apiSpeaker) template.JS {
+	type stJSON struct {
+		ID int    `json:"id"`
+		T  string `json:"t"`
 	}
-	return groups
+	type spkJSON struct {
+		N string   `json:"n"`
+		S []stJSON `json:"s"`
+	}
+	out := make([]spkJSON, 0, len(speakers))
+	for _, s := range speakers {
+		sj := spkJSON{N: s.Name}
+		for _, st := range s.Styles {
+			sj.S = append(sj.S, stJSON{ID: st.ID, T: st.Name})
+		}
+		out = append(out, sj)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return template.JS("[]")
+	}
+	return template.JS(b)
 }
 
 // handleVoiceSet は設定ページからの話者選択を受け、読み上げ/確認の話者IDを更新する。
