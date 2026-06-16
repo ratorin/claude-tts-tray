@@ -75,7 +75,11 @@ func onReady() {
 	// サーバー選択
 	mServer := systray.AddMenuItem("サーバー", "音声合成サーバー")
 	buildServerMenu(mServer)
-	mServerEdit := systray.AddMenuItem("　サーバーを追加・編集…", "ブラウザで設定ページを開く")
+	editLabel := "　設定ページを開く（サーバー）…"
+	if runtime.GOOS == "linux" {
+		editLabel = "　設定ページを開く（サーバー・話者）…" // Linuxは話者選択もこのページ
+	}
+	mServerEdit := systray.AddMenuItem(editLabel, "ブラウザで設定ページを開く")
 	go func() {
 		for range mServerEdit.ClickedCh {
 			openBrowser("http://127.0.0.1:" + itoa(getCfg().Port) + "/")
