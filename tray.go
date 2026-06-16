@@ -402,14 +402,19 @@ func buildVoiceMenu(parent *systray.MenuItem, speakers []apiSpeaker, err error, 
 // buildVoiceModeMenu は Linux 用の簡易モード選択(音声/チャイム/OFF)を作る。
 // 具体的な話者選択は設定ページ(ブラウザ)で行う(深い入れ子を避けるため)。
 func buildVoiceModeMenu(parent *systray.MenuItem, which string) {
-	voiceVal := "voice"
-	if which == "notify" {
-		voiceVal = "speak"
-	}
+	// read は完了音(done)も選べる。notify(確認)は done が無いので 音声/チャイム/OFF。
 	opts := []struct{ key, label string }{
-		{voiceVal, "音声"},
+		{"speak", "音声"},
 		{"chime", "チャイム"},
 		{"none", "OFF"},
+	}
+	if which == "read" {
+		opts = []struct{ key, label string }{
+			{"voice", "音声"},
+			{"done", "完了音"},
+			{"chime", "チャイム"},
+			{"none", "OFF"},
+		}
 	}
 	cur := getCfg().ReadMode
 	if which == "notify" {
