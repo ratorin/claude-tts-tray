@@ -18,6 +18,7 @@ type Config struct {
 	ReadMode      string            `json:"read_mode"`      // 読み上げ: voice | done | chime | none
 	NotifyText    string            `json:"notify_text"`    // speak時に読み上げる文言
 	MaxChars      int               `json:"max_chars"`      // 読み上げ最大文字数
+	Speed         float64           `json:"speed"`          // 読み上げ速度(speedScale, 1.0=標準)
 	Port          int               `json:"port"`           // ローカル待受ポート
 	Servers       map[string]string `json:"servers"`        // 選択肢(表示名 -> URL)
 }
@@ -44,10 +45,11 @@ func defaultConfig() Config {
 		Server:        "",         // 既定はサーバー無し → 効果音のみ。設定ページ/configで接続する
 		Speaker:       1325133120, // (サーバー接続時に使う既定話者。例: AivisSpeech 花音)
 		NotifySpeaker: 1325133120,
-		NotifyMode:    "chime",  // 既定は効果音。サーバー接続+話者選択で発話
-		ReadMode:      "voice",  // 既定は音声。サーバー未設定なら自動で完了音にフォールバック
+		NotifyMode:    "chime", // 既定は効果音。サーバー接続+話者選択で発話
+		ReadMode:      "voice", // 既定は音声。サーバー未設定なら自動で完了音にフォールバック
 		NotifyText:    "確認してください",
 		MaxChars:      600,
+		Speed:         1.0,
 		Port:          7331,
 		Servers: map[string]string{
 			"AivisSpeech (ローカル)": "http://127.0.0.1:10101",
@@ -81,6 +83,9 @@ func loadConfig() {
 	}
 	if c.MaxChars <= 0 {
 		c.MaxChars = def.MaxChars
+	}
+	if c.Speed <= 0 {
+		c.Speed = def.Speed
 	}
 	if c.Speaker <= 0 {
 		c.Speaker = def.Speaker

@@ -79,6 +79,17 @@ func synthesize(ctx context.Context, server string, speaker int, text string) []
 		return nil
 	}
 
+	// 読み上げ速度を反映: audio_query の speedScale を上書き(他フィールドは保持)
+	if speed := getCfg().Speed; speed > 0 && speed != 1.0 {
+		var q2 map[string]any
+		if json.Unmarshal(query, &q2) == nil {
+			q2["speedScale"] = speed
+			if nb, err := json.Marshal(q2); err == nil {
+				query = nb
+			}
+		}
+	}
+
 	// 2) synthesis
 	req2, err := http.NewRequestWithContext(ctx, http.MethodPost, server+"/synthesis?"+spk.Encode(), bytes.NewReader(query))
 	if err != nil {
@@ -207,7 +218,7 @@ func cacheDir() string {
 // notifyCachePath は (サーバー, 話者, 文言) からキャッシュWAVのパスを決める。
 // いずれかが変われば別ファイルになる。
 func notifyCachePath(server string, speaker int, text string) string {
-	h := sha256.Sum256([]byte(server + "|" + itoa(speaker) + "|" + text))
+	h := sha256.Sum256([]byte(server + "|" + itoa(speaker) + "|" + itoa(int(getCfg().Speed*100)) + "|" + text))
 	name := "notify-" + itoa(speaker) + "-" + hex.EncodeToString(h[:6]) + ".wav"
 	return filepath.Join(cacheDir(), name)
 }

@@ -94,6 +94,9 @@ func onReady() {
 	mVoiceNotify := systray.AddMenuItem("音声（確認）", "確認通知: 効果音 or 話者")
 	buildVoiceMenu(mVoiceNotify, speakers, sErr, "notify")
 
+	mSpeed := systray.AddMenuItem("読み上げ速度", "音声の読み上げ速度")
+	buildSpeedMenu(mSpeed)
+
 	systray.AddSeparator()
 
 	mTest := systray.AddMenuItem("テスト発話（読み上げ）", "読み上げ話者で試聴")
@@ -454,6 +457,43 @@ func buildVoiceModeMenu(parent *systray.MenuItem, which string) {
 				if which == "notify" {
 					go ensureNotifyCache()
 				}
+			}
+		}()
+	}
+}
+
+// buildSpeedMenu は読み上げ速度(speedScale)の選択(ラジオ)を構築する。
+func buildSpeedMenu(parent *systray.MenuItem) {
+	opts := []struct {
+		val   float64
+		label string
+	}{
+		{0.8, "0.8x（ゆっくり）"},
+		{1.0, "1.0x（標準）"},
+		{1.2, "1.2x"},
+		{1.5, "1.5x"},
+		{2.0, "2.0x（速い）"},
+	}
+	cur := getCfg().Speed
+	var items []*systray.MenuItem
+	for _, o := range opts {
+		it := parent.AddSubMenuItemCheckbox(o.label, "", o.val == cur)
+		items = append(items, it)
+	}
+	for i := range items {
+		idx := i
+		val := opts[idx].val
+		go func() {
+			for range items[idx].ClickedCh {
+				updateCfg(func(c *Config) { c.Speed = val })
+				for j, it := range items {
+					if j == idx {
+						it.Check()
+					} else {
+						it.Uncheck()
+					}
+				}
+				go ensureNotifyCache() // 速度変更で確認音キャッシュを作り直し
 			}
 		}()
 	}
