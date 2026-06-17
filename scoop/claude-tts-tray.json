@@ -1,12 +1,12 @@
 {
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Claude Code の応答読み上げ・確認音を鳴らす常駐トレイアプリ",
     "homepage": "https://github.com/ratorin/claude-tts-tray",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/ratorin/claude-tts-tray/releases/download/v0.1.0/claude-tts-tray.exe",
-            "hash": "3f2947c33bf68f48da59d1d4941d74fe8af467eefefc34731d5ead24a935b8d0"
+            "url": "https://github.com/ratorin/claude-tts-tray/releases/download/v0.2.0/claude-tts-tray.exe",
+            "hash": "e8c8704dcc863b9e122191747f69e1511c8524cec0344ac5f03142f5de2fc716"
         }
     },
     "bin": "claude-tts-tray.exe",
