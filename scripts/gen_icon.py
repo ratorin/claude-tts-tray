@@ -23,6 +23,7 @@ ORANGE = (233, 124, 60)     # #E97C3C 通常時のマーク/音波
 ORANGE_ACT = (231, 98, 46)  # #E7622E 発話中(やや赤寄り=停止の合図)
 GRAY = (140, 148, 158)      # #8C949E 無効時のマーク/音波
 SLASH = (70, 76, 86)        # ミュート斜線
+RED = (224, 49, 49)         # #E03131 発話中の停止ボタン(赤)
 
 # ---- 形状パラメータ（単位座標 0..1, y下向き）-----------------------
 CX, CY = 0.38, 0.50         # スターバースト中心（右に音波を置くため左寄せ）
@@ -79,6 +80,17 @@ def _in_square(x, y):
 	return True
 
 
+def _in_rounded(x, y, cx, cy, half, rad):
+	"""中心(cx,cy)・半サイズhalf・角丸radの角丸四角の内側か。"""
+	dx, dy = abs(x - cx), abs(y - cy)
+	if dx > half or dy > half:
+		return False
+	ix, iy = half - rad, half - rad
+	if dx > ix and dy > iy:
+		return hypot(dx - ix, dy - iy) <= rad
+	return True
+
+
 def _dist_to_seg(x, y, a, b):
 	ax, ay = a
 	bx, by = b
@@ -96,8 +108,11 @@ def _sample(x, y, kind):
 			return (*ORANGE, 255)
 		return (0, 0, 0, 0)
 	if kind == "speaking":
-		if _in_starburst(x, y) or _in_square(x, y):
-			return (*ORANGE_ACT, 255)
+		# 赤い角丸の停止ボタン + 白い停止マーク(■)。クリックで停止の合図。
+		if _in_rounded(x, y, 0.5, 0.5, 0.42, 0.12):
+			if _in_rounded(x, y, 0.5, 0.5, 0.20, 0.03):
+				return (245, 245, 245, 255)
+			return (*RED, 255)
 		return (0, 0, 0, 0)
 	# off: グレーのマーク+音波 → 斜線(芯)とギャップ(透明)で上書き
 	d = _dist_to_seg(x, y, SLASH_A, SLASH_B)
