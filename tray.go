@@ -28,7 +28,11 @@ func main() {
 	loadConfig()
 	c := getCfg()
 	if err := startServer(c.Port); err != nil {
-		logLine("server start failed: " + err.Error())
+		// ポートを掴めない = 既に別インスタンスが常駐中(多重起動)。
+		// トレイを二重に出さず、そのまま終了して単一インスタンスを保つ。
+		// (自己再起動時は旧プロセスが closeServer 済みなので startServer はリトライ内で成功する)
+		logLine("server start failed (already running?), exiting: " + err.Error())
+		return
 	}
 	go ensureNotifyCache() // 確認音を先に用意して初回から即時に
 	applyMenuTheme()       // メニュー文字色対策(Win)。プロセスのメニューテーマを先に確定
@@ -46,29 +50,41 @@ func onReady() {
 	// メッセージポンプをブロックしない。
 	systray.SetOnTapped(func() { go cancelCurrent() })
 
-	// ON/OFF トグル
-	mEnabled := systray.AddMenuItemCheckbox("読み上げ 有効", "読み上げの ON/OFF", getCfg().Enabled)
-	go func() {
-		for range mEnabled.ClickedCh {
-			updateCfg(func(c *Config) { c.Enabled = !c.Enabled })
-			if getCfg().Enabled {
-				mEnabled.Check()
-			} else {
-				mEnabled.Uncheck()
-				cancelCurrent() // 進行中の発話を確実に止める(バッファ済みチャンクも含む)
+	// ON/OFF トグル と 今すぐ停止。
+	// Linux では SNI ホスト(GNOME 等)が左クリックを常にメニュー表示へ割り当てるため
+	// SetOnTapped による「左クリック=停止」が効かない。そこで Linux では「今すぐ停止」を
+	// 最上段に置き、左クリック→最上段ワンクリックで止められるようにする。
+	addEnabled := func() {
+		mEnabled := systray.AddMenuItemCheckbox("読み上げ 有効", "読み上げの ON/OFF", getCfg().Enabled)
+		go func() {
+			for range mEnabled.ClickedCh {
+				updateCfg(func(c *Config) { c.Enabled = !c.Enabled })
+				if getCfg().Enabled {
+					mEnabled.Check()
+				} else {
+					mEnabled.Uncheck()
+					cancelCurrent() // 進行中の発話を確実に止める(バッファ済みチャンクも含む)
+				}
+				refreshIcon()
+				updateTooltip()
 			}
-			refreshIcon()
-			updateTooltip()
-		}
-	}()
-
-	// 今すぐ停止(再生中の音声を止める)
-	mStop := systray.AddMenuItem("今すぐ停止", "再生中の音声を止める")
-	go func() {
-		for range mStop.ClickedCh {
-			cancelCurrent()
-		}
-	}()
+		}()
+	}
+	addStop := func() {
+		mStop := systray.AddMenuItem("今すぐ停止", "再生中の音声を止める")
+		go func() {
+			for range mStop.ClickedCh {
+				cancelCurrent()
+			}
+		}()
+	}
+	if runtime.GOOS == "linux" {
+		addStop() // 左クリックで開くメニューの最上段に停止を置く
+		addEnabled()
+	} else {
+		addEnabled()
+		addStop()
+	}
 
 	systray.AddSeparator()
 
